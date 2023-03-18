@@ -1,13 +1,15 @@
-#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <unistd.h>
 
 #define BUF_SIZE 30
+#define READ_END 0
+#define WRITE_END 1
 
 double average(double *arr, int n) {
   double sum = 0;
@@ -96,22 +98,28 @@ int main(int argc, char *argv[]) {
   // send process index and elapsed time to parent
   for (int i = 0; i < n; i++) {
     if ((cur_pid = fork()) == 0) {
+      close(fd[READ_END]);
       t_elapsed = bench_exec(newargv);
       sprintf(write_buf, "%d,%.5f", i, t_elapsed);
-      write(fd[1], write_buf, BUF_SIZE);
+      write(fd[WRITE_END], write_buf, BUF_SIZE);
+      close(fd[WRITE_END]);
       exit(0);
     }
   }
 
+  close(fd[WRITE_END]);
+
   // receive execution times as children finish
   // print execution times
   while ((cur_pid = wait(NULL)) > 0) {
-    read(fd[0], read_buf, BUF_SIZE);
+    read(fd[READ_END], read_buf, BUF_SIZE);
     pid_index = atoi(strtok(read_buf, ","));
     exec_time = atof(strtok(NULL, ","));
     exec_times[pid_index] = exec_time;
     printf("Child %d Executed in %.2f millis\n", (pid_index + 1), exec_time);
   }
+
+  close(fd[READ_END]);
 
   // print stats
   printf("Max: %.2f millis\n", maximum(exec_times, n));
