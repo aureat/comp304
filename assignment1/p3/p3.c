@@ -35,6 +35,12 @@ int main(int argc, char* argv[]) {
 
   // open shared memory segment
   shm_fd = shm_open(name, O_CREAT | O_RDWR, 0666);
+  if (shm_fd == -1) {
+		printf("shared memory failed\n");
+		exit(-1);
+	}
+
+  // restrict shared memory size
   ftruncate(shm_fd, SHMSIZE);
 
   // map shared memory segment

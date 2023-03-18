@@ -13,7 +13,7 @@ int main(int argc, char* argv[]) {
     pid = fork();
     if (pid == 0) {
       level++;
-      printf("ID: %d, Parent ID: %d, Level: %d\n", getpid(), getppid(), level);
+      printf("Process ID: %d, Parent ID: %d, level: %d\n", getpid(), getppid(), level);
     } else {
       wait(NULL);
     }

@@ -37,7 +37,6 @@ double minimum(double *arr, int n) {
 double bench_exec(char **argv) {
   int exec_pid;
   struct timeval t_start, t_end;
-  double t_elapsed;
 
   // direct stream to /dev/null
   int devnull = open("/dev/null", O_WRONLY);
