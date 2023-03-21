@@ -23,20 +23,20 @@ int main(int argc, char* argv[]) {
   // and parses them into an array
   char buf[MAX_NUMS];
   int nums[MAX_NUMS], nums_length = 0;
-  while (fgets(buf, 1000, stdin) != NULL) {
+  while (fgets(buf, MAX_NUMS, stdin) != NULL) {
     nums[nums_length++] = atoi(buf);
   }
 
   // shared memory segment
   int shm_fd;
   void* shm_ptr;
-  const int SHMSIZE = MAX_NUMS * sizeof(int);
+  const int SHMSIZE = nums_length * sizeof(int);
   const char* name = "comp304";
 
   // open shared memory segment
   shm_fd = shm_open(name, O_CREAT | O_RDWR, 0666);
   if (shm_fd == -1) {
-		printf("shared memory failed\n");
+		printf("Shared memory failed\n");
 		exit(-1);
 	}
 
@@ -51,14 +51,13 @@ int main(int argc, char* argv[]) {
   }
 
   // copy nums to shared memory
-  memcpy(shm_ptr, nums, (nums_length)*sizeof(int));
+  memcpy(shm_ptr, nums, SHMSIZE);
 
   // keep track of pids
   pid_t cur_pid, pids[n];
 
   // fork n child processes
   for (int i = 0; i < n; i++) {
-
     if ((pids[i] = fork()) == 0) {
 
       // iterate over nums_length/n elements its responsible for
@@ -66,11 +65,12 @@ int main(int argc, char* argv[]) {
       int end = ((i + 1) * nums_length) / n;
 
       // get the remainder if nums_length is not divisible by n
-      if (i == n - 1) end += nums_length % n;
+      if (i == n - 1)
+        end += nums_length % n;
 
       // iterate and search for x
       for (int j = start; j < end; j++) {
-        if (nums[j] == x) {
+        if (((int*)shm_ptr)[j] == x) {
           printf("Found %d at index %d\n", x, j);
           exit(0); // exit with status 0 if x is found
         }
@@ -79,23 +79,18 @@ int main(int argc, char* argv[]) {
       // if x is not found, exit with status 1
       exit(1);
     }
-
   }
 
   // wait for children to finish and check their exit status
   int status;
   while ((cur_pid = wait(&status)) > 0) {
-
     // check if x is found
     if (status == 0) {
-
       // kill all children and exit with status 0
       for (int i = 0; i < n; i++)
         kill(pids[i], SIGTERM);
       exit(0);
-      
     }
-
   }
 
   // close and unlink shared memory
