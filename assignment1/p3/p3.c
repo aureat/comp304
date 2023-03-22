@@ -4,14 +4,16 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/time.h>
-#include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/shm.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <signal.h>
 
+#define EXIT_ERROR -1
+
 #define MAX_NUMS 1000
+#define MAX_LINE 64
 
 int main(int argc, char* argv[]) {
 
@@ -19,39 +21,50 @@ int main(int argc, char* argv[]) {
   int x = atoi(argv[1]);
   int n = atoi(argv[2]);
 
-  // reads a newline-delimited sequence of at most 1000 numbers from stdin
-  // and parses them into an array
-  char buf[MAX_NUMS];
-  int nums[MAX_NUMS], nums_length = 0;
-  while (fgets(buf, MAX_NUMS, stdin) != NULL) {
-    nums[nums_length++] = atoi(buf);
-  }
-
   // shared memory segment
   int shm_fd;
-  void* shm_ptr;
-  const int SHMSIZE = nums_length * sizeof(int);
+  const int SHMSIZE = MAX_NUMS * sizeof(int);
   const char* name = "comp304";
 
   // open shared memory segment
   shm_fd = shm_open(name, O_CREAT | O_RDWR, 0666);
-  if (shm_fd == -1) {
-		printf("Shared memory failed\n");
-		exit(-1);
+  if (shm_fd == EXIT_ERROR) {
+		perror("shm_open failed");
+		exit(EXIT_ERROR);
 	}
 
   // restrict shared memory size
   ftruncate(shm_fd, SHMSIZE);
 
-  // map shared memory segment
-  shm_ptr = mmap(0, SHMSIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+  // map shared memory segment for read-write
+  void* shm_ptr = mmap(0, SHMSIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
   if (shm_ptr == MAP_FAILED) {
-    printf("Map failed");
-    exit(EXIT_FAILURE);
+    perror("mmap failed");
+    exit(EXIT_ERROR);
   }
 
-  // copy nums to shared memory
-  memcpy(shm_ptr, nums, SHMSIZE);
+  // nums array
+  int* nums = (int*) shm_ptr;
+  int nums_length = 0;
+
+  // buffer for reading from stdin
+  size_t buf_len = MAX_LINE * sizeof(char);
+  char* line_buf = malloc(buf_len);
+  if (line_buf == NULL) {
+    perror("buffer allocation failed");
+    exit(EXIT_ERROR);
+  }
+
+  // read newline-delimited sequence of at most 1000 numbers from stdin
+  // store in shared memory
+  while (getline(&line_buf, &buf_len, stdin) != -1 && \
+         nums_length < MAX_NUMS) 
+  {
+    nums[nums_length++] = atoi(line_buf);
+  }
+
+  // free buffer
+  free(line_buf);
 
   // keep track of pids
   pid_t cur_pid, pids[n];
@@ -64,42 +77,59 @@ int main(int argc, char* argv[]) {
       int start = (i * nums_length) / n;
       int end = ((i + 1) * nums_length) / n;
 
-      // get the remainder if nums_length is not divisible by n
+      // get the remainder for the last child if nums_length is not divisible by n
       if (i == n - 1)
         end += nums_length % n;
 
       // iterate and search for x
       for (int j = start; j < end; j++) {
-        if (((int*)shm_ptr)[j] == x) {
+        if (nums[j] == x) {
           printf("Found %d at index %d\n", x, j);
-          exit(0); // exit with status 0 if x is found
+          exit(EXIT_SUCCESS); // exit with status 0 if x is found
         }
       }
 
-      // if x is not found, exit with status 1
-      exit(1);
+      // exit with status 1 if child does not find x
+      exit(EXIT_FAILURE);
     }
   }
 
   // wait for children to finish and check their exit status
   int status;
+  int found = 0;
   while ((cur_pid = wait(&status)) > 0) {
-    // check if x is found
-    if (status == 0) {
-      // kill all children and exit with status 0
+    if (status == EXIT_SUCCESS) { // check if x is found
       for (int i = 0; i < n; i++)
-        kill(pids[i], SIGTERM);
-      exit(0);
+        kill(pids[i], SIGTERM); // kill all remaining children politely
+      found = 1;
+      break;
     }
   }
 
+  // unmap shared memory segment
+  if (munmap(shm_ptr, SHMSIZE) == EXIT_ERROR) {
+    perror("munmap failed");
+    exit(EXIT_ERROR);
+  }
+
+  // close shared memory descriptor
+  if (close(shm_fd) == EXIT_ERROR) {
+    perror("failed to close shared memory");
+    exit(EXIT_ERROR);
+  }
+
   // close and unlink shared memory
-  if (shm_unlink(name) == -1) {
-		printf("Error removing %s\n", name);
-		exit(-1);
+  if (shm_unlink(name) == EXIT_ERROR) {
+		perror("shm_unlink failed");
+		exit(EXIT_ERROR);
 	}
 
-  // if x is not found, print "Not found" and exit with status 1
-  printf("Not found\n");
-  exit(1);
+  // exit with status 0 if x is found
+  if (found) {
+    exit(EXIT_SUCCESS);
+  }
+
+  fprintf(stderr, "number not found!\n");
+  exit(EXIT_FAILURE);
+
 }

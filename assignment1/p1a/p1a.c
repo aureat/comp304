@@ -5,18 +5,24 @@
 #include <unistd.h>
 
 int main(int argc, char* argv[]) {
+
+  // get number of children
   int n = atoi(argv[1]);
+
+  // print parent process id and level
   int level = 0;
-  pid_t pid;
   printf("Main Process ID: %d, level: %d\n", getpid(), level);
+
+  // recursively create n children
+  pid_t pid;
   for (int i = 0; i < n; i++) {
-    pid = fork();
-    if (pid == 0) {
-      level++;
-      printf("Process ID: %d, Parent ID: %d, level: %d\n", getpid(), getppid(), level);
-    } else {
-      wait(NULL);
+    if ((pid = fork()) == 0) {
+      printf("Process ID: %d, Parent ID: %d, level: %d\n", getpid(), getppid(), ++level);
     }
   }
-  exit(0);
+
+  // wait for all children and exit
+  wait(NULL);
+  exit(EXIT_SUCCESS);
+
 }
