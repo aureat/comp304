@@ -1,0 +1,3 @@
+Number of accesses: 1000
+TLB Hits = 136
+TLB Hit Rate = 0.136

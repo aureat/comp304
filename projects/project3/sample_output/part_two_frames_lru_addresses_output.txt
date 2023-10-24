@@ -1,0 +1,3 @@
+Number of accesses: 1000
+Page Faults = 465
+Page Fault Rate = 0.465
